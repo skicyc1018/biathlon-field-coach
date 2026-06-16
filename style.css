@@ -100,7 +100,7 @@ body.analysis-focus .hint-card, body.analysis-focus .action-row{display:none}
 @media(max-width:760px){.expanded-tools,.four-ring-panel{grid-template-columns:1fr}}
 
 
-/* v1.0.7: 결과 화면 복귀 버튼을 명확히 표시 */
+/* v1.0.8: 결과 화면 복귀 버튼을 명확히 표시 */
 .report-nav-inline{display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-end;align-items:center;margin:14px 0 18px;padding:12px;border-radius:18px;background:#edf4f8;border:1px solid #d6e3ee}
 .report-nav-inline button{min-width:190px;color:#04101a}
 .report-nav-inline .secondary{background:#172941;color:#fff}
@@ -109,3 +109,19 @@ body.analysis-focus .hint-card, body.analysis-focus .action-row{display:none}
 .report-actions .secondary{color:#fff}
 .report-actions .primary{color:#021018}
 @media(max-width:760px){.report-nav-inline{justify-content:stretch}.report-nav-inline button{width:100%;min-width:0}.report-head{position:static}.report-actions button{width:100%}}
+
+/* v1.0.8: 현장 분석 화면을 더 크게, 보드판 직접 마킹 접근성 강화 */
+.hero-actions{display:flex;gap:14px;flex-wrap:wrap}.hero-actions .big{min-width:180px}
+.canvas-wrap{height:clamp(520px, 76vh, 940px)}
+.canvas-wrap canvas{max-height:100%;max-width:100%}
+body.analysis-focus .canvas-wrap{height:calc(100vh - 190px);min-height:520px}
+body.analysis-focus .canvas-wrap canvas{max-height:100%;max-width:100%}
+@media(max-width:760px){
+  .hero-actions .big{width:100%;min-width:0}
+  .canvas-wrap{height:clamp(420px, 70vh, 820px)}
+  body.analysis-focus .canvas-wrap{height:calc(100vh - 250px);min-height:430px}
+}
+@media(orientation:landscape) and (max-height:680px){
+  .canvas-wrap{height:calc(100vh - 185px);min-height:340px}
+  body.analysis-focus .canvas-wrap{height:calc(100vh - 170px);min-height:330px}
+}

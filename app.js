@@ -1,5 +1,5 @@
-const KEY = 'bfc_v107_store';
-const OLD_KEYS = ['bfc_v106_store','bfc_v105_store','bfc_v104_store','bfc_v102_store','bfc_v101_store','bfc_v1_store'];
+const KEY = 'bfc_v108_store';
+const OLD_KEYS = ['bfc_v107_store','bfc_v106_store','bfc_v105_store','bfc_v104_store','bfc_v102_store','bfc_v101_store','bfc_v1_store'];
 const state = {
   view: 'home', mode: 'add', viewMode: 'fit', image: null, imageName: '', points: [], center: null,
   selectedPoint: null, dragHitRadius: false, targetRadius: null, targetCircle: null,
@@ -276,7 +276,104 @@ function toggleFocus(){ document.body.classList.toggle('analysis-focus'); $('foc
 function toggleFill(){
   const wrap=document.querySelector('.canvas-wrap'); wrap.classList.toggle('fill-mode'); state.viewMode=wrap.classList.contains('fill-mode')?'fill':'fit'; $('fillModeBtn').textContent= state.viewMode==='fill' ? '□ 전체 맞춤' : '▣ 화면 채움';
 }
-function estimateTargetFromImage(){
+
+// v1.0.8: 표준 사격판 직접 마킹 + 보드판 자동 보정
+function createTemplateBoard(){
+  const W=1200, H=1500;
+  const c=document.createElement('canvas'), ctx=c.getContext('2d');
+  c.width=W; c.height=H;
+  ctx.fillStyle='#f5f7fb'; ctx.fillRect(0,0,W,H);
+  // 보드판 배경
+  ctx.save();
+  ctx.fillStyle='#ffffff'; ctx.strokeStyle='#cfd8e3'; ctx.lineWidth=8;
+  roundRect(ctx,90,60,W-180,H-130,44); ctx.fill(); ctx.stroke();
+  ctx.restore();
+  const cx=W/2, cy=780, R=470;
+  ctx.fillStyle='#101820'; ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.fill();
+  // 사격판 선: 중앙 십자와 4개 기준선
+  ctx.save();
+  ctx.strokeStyle='rgba(255,255,255,.92)'; ctx.lineWidth=4;
+  ctx.beginPath(); ctx.moveTo(cx-R,cy); ctx.lineTo(cx+R,cy); ctx.moveTo(cx,cy-R); ctx.lineTo(cx,cy+R); ctx.stroke();
+  const rings={ring1:R*.26, prone:R*.46, ring3:R*.67, standing:R};
+  ctx.setLineDash([4,10]); ctx.strokeStyle='rgba(255,255,255,.78)'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,rings.ring1,0,Math.PI*2); ctx.stroke();
+  ctx.setLineDash([]); ctx.strokeStyle='rgba(255,255,255,.96)'; ctx.lineWidth=9; ctx.beginPath(); ctx.arc(cx,cy,rings.prone,0,Math.PI*2); ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,.90)'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(cx,cy,rings.ring3,0,Math.PI*2); ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,.25)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(cx,cy,R*.83,0,Math.PI*2); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle='#d82331'; ctx.font='bold 54px sans-serif'; ctx.textAlign='center'; ctx.fillText('BIATHLON FIELD COACH',cx,H-135);
+  ctx.fillStyle='#64748b'; ctx.font='bold 32px sans-serif'; ctx.fillText('표준 보드판 직접 마킹 모드',cx,H-90);
+  const img=new Image();
+  img.onload=()=>{
+    state.image=img; state.imageName='표준 사격 보드판'; state.points=[];
+    state.center={x:cx,y:cy}; state.targetRadius=R; state.targetCircle={x:cx,y:cy,r:R,source:'template'};
+    if($('ring1Radius')) $('ring1Radius').value=Math.round(rings.ring1);
+    if($('proneRadius')) $('proneRadius').value=Math.round(rings.prone);
+    if($('ring3Radius')) $('ring3Radius').value=Math.round(rings.ring3);
+    if($('standingRadius')) $('standingRadius').value=Math.round(rings.standing);
+    syncCalibrationFromInputs(); $('emptyCanvas').style.display='none'; go('analysis'); setMode('add'); drawCanvas(); renderCounts(); toast('표준 보드판 직접 마킹 모드입니다. 맞은 위치를 바로 찍으세요.');
+  };
+  img.src=c.toDataURL('image/png');
+}
+function lightLinePixel(data,W,x,y){
+  const i=(y*W+x)*4; const r=data[i], g=data[i+1], b=data[i+2];
+  const max=Math.max(r,g,b), min=Math.min(r,g,b); const sat=max? (max-min)/max : 0;
+  return max>135 && sat<0.28;
+}
+function detectCrossAndRings(data,W,H,cx,cy,R){
+  let bestX=cx, bestXS=-1, bestY=cy, bestYS=-1;
+  const xMin=Math.max(2,Math.round(cx-R*.35)), xMax=Math.min(W-3,Math.round(cx+R*.35));
+  const yMin=Math.max(2,Math.round(cy-R*.35)), yMax=Math.min(H-3,Math.round(cy+R*.35));
+  // 세로 실선 찾기: 표적판 안에서 밝은 선이 가장 길게 이어지는 x
+  for(let x=xMin;x<=xMax;x++){
+    let s=0;
+    for(let y=Math.max(2,Math.round(cy-R*.85)); y<=Math.min(H-3,Math.round(cy+R*.85)); y+=2){
+      const d=Math.hypot(x-cx,y-cy); if(d>R*.96||d<R*.12) continue;
+      if(lightLinePixel(data,W,x,y)) s++;
+    }
+    if(s>bestXS){bestXS=s; bestX=x;}
+  }
+  // 가로 실선 찾기
+  for(let y=yMin;y<=yMax;y++){
+    let s=0;
+    for(let x=Math.max(2,Math.round(cx-R*.85)); x<=Math.min(W-3,Math.round(cx+R*.85)); x+=2){
+      const d=Math.hypot(x-cx,y-cy); if(d>R*.96||d<R*.12) continue;
+      if(lightLinePixel(data,W,x,y)) s++;
+    }
+    if(s>bestYS){bestYS=s; bestY=y;}
+  }
+  const centerOk = bestXS>R*.16 && bestYS>R*.16;
+  const ncx=centerOk ? bestX : cx, ncy=centerOk ? bestY : cy;
+  // 원 기준선은 대각선 방향의 밝은 링을 우선 탐색한다. 십자선 영향 제거 목적.
+  const angles=[Math.PI/6,Math.PI/3,2*Math.PI/3,5*Math.PI/6,7*Math.PI/6,4*Math.PI/3,5*Math.PI/3,11*Math.PI/6];
+  const profile=[];
+  for(let rr=Math.max(15,Math.round(R*.15)); rr<Math.round(R*.9); rr+=2){
+    let score=0;
+    for(const a of angles){
+      const x=Math.round(ncx+Math.cos(a)*rr), y=Math.round(ncy+Math.sin(a)*rr);
+      if(x<2||y<2||x>=W-2||y>=H-2) continue;
+      if(lightLinePixel(data,W,x,y)) score++;
+    }
+    profile.push({r:rr,score});
+  }
+  const peaks=[]; const minSep=Math.max(20,R*.08);
+  for(let i=2;i<profile.length-2;i++){
+    const p=profile[i];
+    if(p.score>=2 && p.score>=profile[i-1].score && p.score>=profile[i+1].score && p.score>=profile[i-2].score && p.score>=profile[i+2].score){
+      if(!peaks.length || Math.abs(p.r-peaks[peaks.length-1].r)>minSep) peaks.push({...p});
+      else if(p.score>peaks[peaks.length-1].score) peaks[peaks.length-1]={...p};
+    }
+  }
+  peaks.sort((a,b)=>a.r-b.r);
+  let ring1=R*.26, prone=R*.46, ring3=R*.67;
+  if(peaks.length>=3){ ring1=peaks[0].r; prone=peaks[1].r; ring3=peaks[2].r; }
+  else if(peaks.length>=2){ ring1=peaks[0].r; prone=peaks[1].r; ring3=R*.67; }
+  // 복사 기준선이 너무 안쪽으로 잡히면 두 번째 굵은 실선 기준에 가깝게 보정
+  prone=Math.max(prone, R*.40); prone=Math.min(prone, R*.58);
+  ring1=Math.min(ring1, prone*.75); ring3=Math.max(ring3, prone*1.25); ring3=Math.min(ring3, R*.82);
+  return {center:{x:ncx,y:ncy}, rings:{ring1Radius:ring1, proneRadius:prone, ring3Radius:ring3, standingRadius:R}, confidence:{centerOk,bestXS,bestYS,peaks}};
+}
+
+function estimateTargetFromImage_original_unused(){
   if(!state.image) return null;
   const srcW=state.image.naturalWidth||state.image.width, srcH=state.image.naturalHeight||state.image.height;
   const maxDim=520, scale=Math.min(1,maxDim/Math.max(srcW,srcH));
@@ -318,6 +415,49 @@ function estimateTargetFromImage(){
   syncCalibrationFromInputs();
   return state.targetCircle;
 }
+
+function estimateTargetFromImage(){
+  if(!state.image) return null;
+  const srcW=state.image.naturalWidth||state.image.width, srcH=state.image.naturalHeight||state.image.height;
+  const maxDim=720, scale=Math.min(1,maxDim/Math.max(srcW,srcH));
+  const W=Math.max(1,Math.round(srcW*scale)), H=Math.max(1,Math.round(srcH*scale));
+  const c=document.createElement('canvas'), ctx=c.getContext('2d'); c.width=W; c.height=H; ctx.drawImage(state.image,0,0,W,H);
+  const data=ctx.getImageData(0,0,W,H).data, visited=new Uint8Array(W*H);
+  function isDark(x,y){
+    const i=(y*W+x)*4; const r=data[i],g=data[i+1],b=data[i+2];
+    const max=Math.max(r,g,b), min=Math.min(r,g,b), sat=max? (max-min)/max:0;
+    return max<112 && sat<0.68;
+  }
+  const comps=[];
+  for(let y=1;y<H-1;y+=2){
+    for(let x=1;x<W-1;x+=2){
+      const idx=y*W+x; if(visited[idx]||!isDark(x,y)) continue;
+      const stack=[[x,y]]; visited[idx]=1; let n=0,sx=0,sy=0,minX=x,maxX=x,minY=y,maxY=y;
+      while(stack.length){
+        const [cx,cy]=stack.pop(); n++; sx+=cx; sy+=cy; minX=Math.min(minX,cx); maxX=Math.max(maxX,cx); minY=Math.min(minY,cy); maxY=Math.max(maxY,cy);
+        for(const [dx,dy] of [[2,0],[-2,0],[0,2],[0,-2]]){ const nx=cx+dx, ny=cy+dy, ni=ny*W+nx; if(nx<1||ny<1||nx>=W-1||ny>=H-1||visited[ni]) continue; visited[ni]=1; if(isDark(nx,ny)) stack.push([nx,ny]); }
+      }
+      const bw=maxX-minX, bh=maxY-minY; const touchesEdge=minX<8||minY<8||maxX>W-8||maxY>H-8; const ratio=bw/Math.max(1,bh);
+      if(n>180 && !touchesEdge && ratio>0.55 && ratio<1.85 && bw>90 && bh>90){ comps.push({n,sx,sy,minX,maxX,minY,maxY,bw,bh}); }
+    }
+  }
+  if(!comps.length){ toast('표적판 외곽을 자동으로 찾지 못했습니다. 중앙/기준선을 직접 지정하세요.'); return null; }
+  comps.sort((a,b)=>b.n-a.n); const comp=comps[0];
+  const rawCx=(comp.minX+comp.maxX)/2, rawCy=(comp.minY+comp.maxY)/2, rawR=(comp.bw+comp.bh)/4;
+  const detected=detectCrossAndRings(data,W,H,rawCx,rawCy,rawR);
+  const cx=detected.center.x/scale, cy=detected.center.y/scale, R=rawR/scale;
+  state.targetCircle={x:cx,y:cy,r:R,source:detected.confidence.centerOk?'cross-lines':'outer-circle'};
+  state.center={x:cx,y:cy}; state.targetRadius=R;
+  const rings=detected.rings;
+  if($('ring1Radius')) $('ring1Radius').value=Math.round(rings.ring1Radius/scale);
+  if($('proneRadius')) $('proneRadius').value=Math.round(rings.proneRadius/scale);
+  if($('ring3Radius')) $('ring3Radius').value=Math.round(rings.ring3Radius/scale);
+  if($('standingRadius')) $('standingRadius').value=Math.round(rings.standingRadius/scale);
+  syncCalibrationFromInputs(); drawCanvas();
+  toast(detected.confidence.centerOk ? '중앙 십자와 기준선을 자동 보정했습니다.' : '외곽원 기준으로 중앙/기준선을 추정했습니다. 필요 시 수동 보정하세요.');
+  return state.targetCircle;
+}
+
 function autoDetectMagnets(){
   if(!state.image){ toast('사진을 먼저 촬영하거나 업로드하세요.'); return; }
   estimateTargetFromImage(); if(!state.center){ toast('중앙점을 먼저 지정하세요.'); return; }
@@ -360,7 +500,7 @@ function init(){
   $('shotCanvas').addEventListener('mousedown',handleCanvasDown); $('shotCanvas').addEventListener('mousemove',handleCanvasMove); window.addEventListener('mouseup',handleCanvasUp);
   $('shotCanvas').addEventListener('touchstart',handleCanvasDown,{passive:false}); $('shotCanvas').addEventListener('touchmove',handleCanvasMove,{passive:false}); $('shotCanvas').addEventListener('touchend',handleCanvasUp);
   $('addPointModeBtn').addEventListener('click',()=>setMode('add')); $('movePointModeBtn').addEventListener('click',()=>setMode('move')); $('deletePointModeBtn').addEventListener('click',()=>setMode('del')); $('centerModeBtn').addEventListener('click',()=>setMode('center')); $('ring1ModeBtn').addEventListener('click',()=>setMode('ring1')); $('proneLineModeBtn').addEventListener('click',()=>setMode('proneLine')); $('ring3ModeBtn').addEventListener('click',()=>setMode('ring3')); $('standingLineModeBtn').addEventListener('click',()=>setMode('standingLine')); $('toggleHitModeBtn').addEventListener('click',()=>setMode('toggleHit'));
-  $('autoDetectBtn').addEventListener('click',autoDetectMagnets); $('focusModeBtn').addEventListener('click',toggleFocus); $('fillModeBtn').addEventListener('click',toggleFill); $('applyCalibrationBtn').addEventListener('click',()=>{syncCalibrationFromInputs(); save(); drawCanvas(); toast('판정 기준을 다시 반영했습니다.');});
+  $('autoDetectBtn').addEventListener('click',autoDetectMagnets); $('autoBoardBtn')?.addEventListener('click',()=>{ if(!state.image){ toast('사진을 먼저 불러오세요.'); return; } estimateTargetFromImage(); }); $('templateBoardBtn')?.addEventListener('click',createTemplateBoard); $('directBoardBtn')?.addEventListener('click',createTemplateBoard); $('focusModeBtn').addEventListener('click',toggleFocus); $('fillModeBtn').addEventListener('click',toggleFill); $('applyCalibrationBtn').addEventListener('click',()=>{syncCalibrationFromInputs(); save(); drawCanvas(); toast('판정 기준을 다시 반영했습니다.');});
   $('resetAnalysisBtn').addEventListener('click',resetAnalysis); $('saveAnalysisBtn').addEventListener('click',saveAnalysis); $('goReportsBtn').addEventListener('click',()=>go('reports'));
   $('printReportBtn').addEventListener('click',()=>window.print()); $('shareImageBtn').addEventListener('click',shareReportImage); $('closeReportBtn').addEventListener('click',()=>{ $('reportPaper').hidden=true; document.body.classList.remove('report-open'); });
   ['reportToHomeBtn','reportToHomeBtnTop','reportToHomeBtnBottom'].forEach(id=>$(id)?.addEventListener('click',()=>go('home')));

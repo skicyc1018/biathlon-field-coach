@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bfc-v1-0-7-cache';
+const CACHE_NAME = 'bfc-v1-0-8-cache';
 const ASSETS = [
   './',
   './index.html',
