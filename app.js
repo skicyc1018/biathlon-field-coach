@@ -1,5 +1,5 @@
-const KEY = 'bfc_v108_store';
-const OLD_KEYS = ['bfc_v107_store','bfc_v106_store','bfc_v105_store','bfc_v104_store','bfc_v102_store','bfc_v101_store','bfc_v1_store'];
+const KEY = 'bfc_v111_store';
+const OLD_KEYS = ['bfc_v111_store','bfc_v109_store','bfc_v108_store','bfc_v107_store','bfc_v106_store','bfc_v105_store','bfc_v104_store','bfc_v102_store','bfc_v101_store','bfc_v1_store'];
 const state = {
   view: 'home', mode: 'add', viewMode: 'fit', image: null, imageName: '', points: [], center: null,
   selectedPoint: null, dragHitRadius: false, targetRadius: null, targetCircle: null,
@@ -187,17 +187,23 @@ function drawCanvas(targetCanvas=$('shotCanvas'), report=null){
   if(!img){ canvas.width=1; canvas.height=1; return; }
   canvas.width=img.naturalWidth || img.width; canvas.height=img.naturalHeight || img.height;
   ctx.drawImage(img,0,0,canvas.width,canvas.height);
-  if(center){ drawFourRings(ctx,center,rings,canvas, report?.shootType || currentType()); drawCenter(ctx,center,canvas); }
+  const isTemplateBoard = ((report ? report.targetCircle : state.targetCircle)?.source || '').startsWith('template');
+  if(center){
+    if(!isTemplateBoard) drawFourRings(ctx,center,rings,canvas, report?.shootType || currentType());
+    drawCenter(ctx,center,canvas);
+  }
   pts.forEach((p,i)=>drawPoint(ctx,p,i+1,canvas, center ? pointHitForReport(p,center,radius, report?.edgeTolerance ?? edgeTolerance()) : true));
 }
 function drawFourRings(ctx,p,rings,canvas,type){
   if(!p || !rings) return; ctx.save();
   const scale=Math.max(1, canvas.width/900);
   const defs=[
-    {key:'ring1Radius', label:'① 가는 점선', color:'rgba(255,255,255,.85)', width:1.5*scale, dash:[3*scale,7*scale]},
-    {key:'proneRadius', label:'② 복사 기준선', color:'rgba(255,77,103,.98)', width:4.5*scale, dash:[14*scale,8*scale]},
-    {key:'ring3Radius', label:'③ 가는 실선', color:'rgba(255,255,255,.95)', width:2.2*scale, dash:[]},
-    {key:'standingRadius', label:'④ 입사 기준선', color:'rgba(255,214,0,.98)', width:4*scale, dash:[]}
+    {key:'ring1Radius', label:'① 첫 번째 가는 점선', color:'rgba(255,255,255,.76)', width:1.5*scale, dash:[3*scale,7*scale]},
+    {key:'proneRadius', label:'② 복사 기준선: 두 번째 굵은 실선', color:'rgba(255,255,255,.98)', width:4.5*scale, dash:[]},
+    {key:'ring3Radius', label:'③ 세 번째 가는 점선', color:'rgba(255,255,255,.72)', width:1.8*scale, dash:[3*scale,7*scale]},
+    // ④ 입사 기준선은 실제 보드판의 검은 원과 흰 배경 경계입니다.
+    // 별도 노란 원을 추가하지 않고, 얇은 흰 외곽 보조선으로만 표시합니다.
+    {key:'standingRadius', label:'④ 입사 기준선: 검은 원 외곽', color:'rgba(255,255,255,.88)', width:2.0*scale, dash:[]}
   ];
   defs.forEach(d=>{
     const r=Number(rings[d.key]); if(!r) return;
@@ -277,40 +283,83 @@ function toggleFill(){
   const wrap=document.querySelector('.canvas-wrap'); wrap.classList.toggle('fill-mode'); state.viewMode=wrap.classList.contains('fill-mode')?'fill':'fit'; $('fillModeBtn').textContent= state.viewMode==='fill' ? '□ 전체 맞춤' : '▣ 화면 채움';
 }
 
-// v1.0.9: 표준 사격판 직접 마킹 + 보드판 자동 보정
+// v1.0.11: 실제 보드판 구조 기준 직접 마킹 + 판정 기준선
 function createTemplateBoard(){
   const W=1200, H=1500;
   const c=document.createElement('canvas'), ctx=c.getContext('2d');
   c.width=W; c.height=H;
-  ctx.fillStyle='#f5f7fb'; ctx.fillRect(0,0,W,H);
-  // 보드판 배경
+
+  // 실제 보드판 형태: 흰 보드, 검은 원형 표적, 중앙 가로/세로 점선, 4개 기준 원.
+  ctx.fillStyle='#eef3f8'; ctx.fillRect(0,0,W,H);
   ctx.save();
-  ctx.fillStyle='#ffffff'; ctx.strokeStyle='#cfd8e3'; ctx.lineWidth=8;
+  ctx.fillStyle='#ffffff'; ctx.strokeStyle='#d3dce8'; ctx.lineWidth=8;
   roundRect(ctx,90,60,W-180,H-130,44); ctx.fill(); ctx.stroke();
   ctx.restore();
-  const cx=W/2, cy=780, R=470;
-  ctx.fillStyle='#101820'; ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.fill();
-  // 사격판 선: 중앙 십자와 4개 기준선
+
+  const cx=W/2, cy=760;
+  const standing=470;              // ④ 입사 기준선: 검은 원과 흰 배경의 경계
+  const ring1=standing*0.285;      // ① 첫 번째 가는 점선
+  const prone=standing*0.475;      // ② 두 번째 굵은 실선: 복사 기준선
+  const ring3=standing*0.705;      // ③ 세 번째 가는 점선
+
+  // 검은 표적판. 이 검은 원의 외곽 자체가 ④ 입사 기준선입니다.
+  ctx.fillStyle='#111820';
+  ctx.beginPath(); ctx.arc(cx,cy,standing,0,Math.PI*2); ctx.fill();
+
   ctx.save();
-  ctx.strokeStyle='rgba(255,255,255,.92)'; ctx.lineWidth=4;
-  ctx.beginPath(); ctx.moveTo(cx-R,cy); ctx.lineTo(cx+R,cy); ctx.moveTo(cx,cy-R); ctx.lineTo(cx,cy+R); ctx.stroke();
-  const rings={ring1:R*.26, prone:R*.46, ring3:R*.67, standing:R};
-  ctx.setLineDash([4,10]); ctx.strokeStyle='rgba(255,255,255,.78)'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,rings.ring1,0,Math.PI*2); ctx.stroke();
-  ctx.setLineDash([]); ctx.strokeStyle='rgba(255,255,255,.96)'; ctx.lineWidth=9; ctx.beginPath(); ctx.arc(cx,cy,rings.prone,0,Math.PI*2); ctx.stroke();
-  ctx.strokeStyle='rgba(255,255,255,.90)'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(cx,cy,rings.ring3,0,Math.PI*2); ctx.stroke();
-  ctx.strokeStyle='rgba(255,255,255,.25)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(cx,cy,R*.83,0,Math.PI*2); ctx.stroke();
+  // 중앙 가로/세로 점선: 교차점이 중앙지점입니다.
+  ctx.strokeStyle='rgba(255,255,255,.82)';
+  ctx.lineWidth=3;
+  ctx.setLineDash([4,10]);
+  ctx.beginPath();
+  ctx.moveTo(cx-standing,cy); ctx.lineTo(cx+standing,cy);
+  ctx.moveTo(cx,cy-standing); ctx.lineTo(cx,cy+standing);
+  ctx.stroke();
+
+  // ① 첫 번째 원: 가는 점선
+  ctx.setLineDash([3,9]);
+  ctx.strokeStyle='rgba(255,255,255,.72)';
+  ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(cx,cy,ring1,0,Math.PI*2); ctx.stroke();
+
+  // ② 두 번째 원: 굵은 실선 = 복사 명중 기준선. 선에 걸치면 명중.
+  ctx.setLineDash([]);
+  ctx.strokeStyle='rgba(255,255,255,.98)';
+  ctx.lineWidth=9;
+  ctx.beginPath(); ctx.arc(cx,cy,prone,0,Math.PI*2); ctx.stroke();
+
+  // ③ 세 번째 원: 가는 점선
+  ctx.setLineDash([3,9]);
+  ctx.strokeStyle='rgba(255,255,255,.70)';
+  ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(cx,cy,ring3,0,Math.PI*2); ctx.stroke();
+
+  // ④는 별도 색 원을 추가하지 않습니다. 검은 원과 흰 배경이 만나는 경계가 입사 기준선입니다.
+  // 보조 외곽선은 배경과 동일 계열로 아주 얇게만 처리합니다.
+  ctx.setLineDash([]);
+  ctx.strokeStyle='rgba(255,255,255,.22)';
+  ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.arc(cx,cy,standing,0,Math.PI*2); ctx.stroke();
   ctx.restore();
+
+  // 중앙 보조 십자
+  ctx.save();
+  ctx.strokeStyle='rgba(255,255,255,.95)'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(cx-18,cy); ctx.lineTo(cx+18,cy); ctx.moveTo(cx,cy-18); ctx.lineTo(cx,cy+18); ctx.stroke();
+  ctx.restore();
+
   ctx.fillStyle='#d82331'; ctx.font='bold 54px sans-serif'; ctx.textAlign='center'; ctx.fillText('BIATHLON FIELD COACH',cx,H-135);
-  ctx.fillStyle='#64748b'; ctx.font='bold 32px sans-serif'; ctx.fillText('표준 보드판 직접 마킹 모드',cx,H-90);
+  ctx.fillStyle='#64748b'; ctx.font='bold 30px sans-serif'; ctx.fillText('직접 마킹: ② 복사 실선 / ④ 입사 외곽 경계',cx,H-90);
+
   const img=new Image();
   img.onload=()=>{
-    state.image=img; state.imageName='표준 사격 보드판'; state.points=[];
-    state.center={x:cx,y:cy}; state.targetRadius=R; state.targetCircle={x:cx,y:cy,r:R,source:'template'};
-    if($('ring1Radius')) $('ring1Radius').value=Math.round(rings.ring1);
-    if($('proneRadius')) $('proneRadius').value=Math.round(rings.prone);
-    if($('ring3Radius')) $('ring3Radius').value=Math.round(rings.ring3);
-    if($('standingRadius')) $('standingRadius').value=Math.round(rings.standing);
-    syncCalibrationFromInputs(); $('emptyCanvas').style.display='none'; go('analysis'); setMode('add'); drawCanvas(); renderCounts(); toast('표준 보드판 직접 마킹 모드입니다. 맞은 위치를 바로 찍으세요.');
+    state.image=img; state.imageName='실제 구조 보드판'; state.points=[];
+    state.center={x:cx,y:cy}; state.targetRadius=standing; state.targetCircle={x:cx,y:cy,r:standing,source:'template-real-board-v111'};
+    if($('ring1Radius')) $('ring1Radius').value=Math.round(ring1);
+    if($('proneRadius')) $('proneRadius').value=Math.round(prone);
+    if($('ring3Radius')) $('ring3Radius').value=Math.round(ring3);
+    if($('standingRadius')) $('standingRadius').value=Math.round(standing);
+    syncCalibrationFromInputs(); $('emptyCanvas').style.display='none'; go('analysis'); setMode('add'); drawCanvas(); renderCounts(); toast('보드판 직접 마킹 모드입니다. 맞은 위치를 바로 찍으세요.');
   };
   img.src=c.toDataURL('image/png');
 }
@@ -365,13 +414,19 @@ function detectCrossAndRings(data,W,H,cx,cy,R){
     }
   }
   peaks.sort((a,b)=>a.r-b.r);
-  let ring1=R*.26, prone=R*.46, ring3=R*.67;
-  if(peaks.length>=3){ ring1=peaks[0].r; prone=peaks[1].r; ring3=peaks[2].r; }
-  else if(peaks.length>=2){ ring1=peaks[0].r; prone=peaks[1].r; ring3=R*.67; }
-  // 복사 기준선이 너무 안쪽으로 잡히면 두 번째 굵은 실선 기준에 가깝게 보정
-  prone=Math.max(prone, R*.40); prone=Math.min(prone, R*.58);
-  ring1=Math.min(ring1, prone*.75); ring3=Math.max(ring3, prone*1.25); ring3=Math.min(ring3, R*.82);
-  return {center:{x:ncx,y:ncy}, rings:{ring1Radius:ring1, proneRadius:prone, ring3Radius:ring3, standingRadius:R}, confidence:{centerOk,bestXS,bestYS,peaks}};
+  // v1.0.11: 자동 분석에서는 규정 비율을 우선합니다.
+  // 이전 버전은 사진의 먼지/자석/내부 점선을 두 번째 원으로 오인해 복사선이 너무 좁게 잡혔습니다.
+  // 실제 보드판 기준: ① 첫 점선, ② 두 번째 굵은 실선(복사), ③ 세 번째 점선, ④ 외곽 경계(입사).
+  let ring1=R*.285, prone=R*.475, ring3=R*.705;
+  // 충분히 명확한 피크가 있고 규정 위치와 크게 다르지 않을 때만 보조 보정합니다.
+  const near = (target, tol) => peaks.find(p => Math.abs(p.r-target) <= R*tol)?.r;
+  ring1 = near(R*.285, .08) || ring1;
+  prone = near(R*.475, .09) || prone;
+  ring3 = near(R*.705, .10) || ring3;
+  // 복사선은 절대 안쪽 점선으로 내려가지 않도록 하한을 강하게 둡니다.
+  prone=Math.max(prone, R*.455); prone=Math.min(prone, R*.535);
+  ring1=Math.min(ring1, prone*.72); ring3=Math.max(ring3, prone*1.32); ring3=Math.min(ring3, R*.80);
+  return {center:{x:ncx,y:ncy}, rings:{ring1Radius:ring1, proneRadius:prone, ring3Radius:ring3, standingRadius:R}, confidence:{centerOk,bestXS,bestYS,peaks,regulated:true}};
 }
 
 function estimateTargetFromImage_original_unused(){
