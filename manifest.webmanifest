@@ -1,6 +1,6 @@
 {
-  "name": "Biathlon Field Coach",
-  "short_name": "BFC v1",
+  "name": "Biathlon Field Coach v1.0.4",
+  "short_name": "BFC v1.0.4",
   "description": "야외 바이애슬론 사격장용 선수별 사격 분석 PWA",
   "start_url": "./",
   "scope": "./",
@@ -9,7 +9,17 @@
   "background_color": "#06111f",
   "theme_color": "#06111f",
   "icons": [
-    {"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
-    {"src":"./icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ]
 }

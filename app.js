@@ -1,14 +1,28 @@
-const KEY = 'bfc_v101_store';
+const KEY = 'bfc_v102_store';
+const OLD_KEYS = ['bfc_v101_store','bfc_v1_store'];
 const state = {
   view: 'home', mode: 'add', image: null, imageName: '', points: [], center: null, selectedPoint: null,
   store: { athletes: [], reports: [], settings: { aiEndpoint: '' } }, deferredPrompt: null
 };
 const $ = (id) => document.getElementById(id);
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
-function load(){ try{ state.store = JSON.parse(localStorage.getItem(KEY)) || state.store; }catch(e){} }
+function load(){
+  try{
+    const current = localStorage.getItem(KEY);
+    if(current){ state.store = JSON.parse(current) || state.store; return; }
+    for(const k of OLD_KEYS){
+      const old = localStorage.getItem(k);
+      if(old){ state.store = JSON.parse(old) || state.store; localStorage.setItem(KEY, JSON.stringify(state.store)); return; }
+    }
+  }catch(e){}
+}
 function save(){ localStorage.setItem(KEY, JSON.stringify(state.store)); renderAll(); }
-function go(view){ state.view=view; document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===view)); document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===view)); if(view==='reports') renderReports(); }
-function toast(msg){ alert(msg); }
+function go(view){
+  if(view !== 'reports'){ document.body.classList.remove('report-open'); } state.view=view; document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===view)); document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===view)); if(view==='reports') renderReports(); }
+function toast(msg){
+  const t=document.createElement('div'); t.className='toast'; t.textContent=msg; document.body.appendChild(t);
+  setTimeout(()=>t.classList.add('show'),10); setTimeout(()=>{t.classList.remove('show'); setTimeout(()=>t.remove(),250);},2200);
+}
 function getAthlete(id){ return state.store.athletes.find(a=>a.id===id); }
 
 function renderAll(){
@@ -60,16 +74,23 @@ function canvasPos(evt){
 function nearestPoint(pos){
   let best=null, dist=Infinity; state.points.forEach((p,i)=>{ const d=Math.hypot(p.x-pos.x,p.y-pos.y); if(d<dist){dist=d;best={p,i,d};} }); return best;
 }
-function setMode(mode){ state.mode=mode; state.selectedPoint=null; const names={add:'점 추가',move:'점 이동',del:'점 삭제',center:'중앙 지정'}; $('modeText').textContent=`현재 모드: ${names[mode]}`; }
+function setMode(mode){
+  state.mode=mode; state.selectedPoint=null;
+  const names={add:'수동 마킹',move:'점 이동',del:'점 삭제',center:'중앙 지정'};
+  $('modeText').textContent=`현재 모드: ${names[mode]}`;
+  ['addPointModeBtn','movePointModeBtn','deletePointModeBtn','centerModeBtn'].forEach(id=>$(id)?.classList.remove('active-tool'));
+  const map={add:'addPointModeBtn',move:'movePointModeBtn',del:'deletePointModeBtn',center:'centerModeBtn'};
+  $(map[mode])?.classList.add('active-tool');
+}
 function handleCanvasDown(evt){
   if(!state.image) return; evt.preventDefault(); const pos=canvasPos(evt);
-  if(state.mode==='center'){ state.center=pos; drawCanvas(); return; }
+  if(state.mode==='center'){ state.center=pos; drawCanvas(); toast('중앙점 지정 완료'); setMode('add'); return; }
   if(state.mode==='add'){
     const max=parseInt($('shotCount').value||'5',10); if(state.points.length>=max){ toast(`현재 발수는 ${max}발입니다. 추가하려면 발수를 변경하세요.`); return; }
-    state.points.push(pos); renderCounts(); return;
+    state.points.push(pos); renderCounts(); toast(`${state.points.length}번 탄착점 입력`); return;
   }
   const near=nearestPoint(pos); if(!near || near.d>35) return;
-  if(state.mode==='del'){ state.points.splice(near.i,1); renderCounts(); return; }
+  if(state.mode==='del'){ state.points.splice(near.i,1); renderCounts(); toast('탄착점 삭제'); return; }
   if(state.mode==='move'){ state.selectedPoint=near.i; }
 }
 function handleCanvasMove(evt){ if(state.selectedPoint==null || state.mode!=='move') return; evt.preventDefault(); state.points[state.selectedPoint]=canvasPos(evt); drawCanvas(); }
@@ -120,6 +141,7 @@ function saveAnalysis(){
   state.store.reports.push(r); save(); toast('세트가 저장되었습니다.'); go('reports'); openReport(r.id);
 }
 function openReport(id){
+  document.body.classList.add('report-open');
   const r=state.store.reports.find(x=>x.id===id); if(!r) return; const a=getAthlete(r.athleteId)||{name:'선수 미상'};
   $('reportPaper').hidden=false; $('reportTitle').textContent=`${a.name} ${r.shootType} 사격 결과`;
   $('reportMeta').innerHTML=`<div class="metric"><b>선수</b><br>${a.name}</div><div class="metric"><b>일시</b><br>${new Date(r.createdAt).toLocaleString()}</div><div class="metric"><b>구분</b><br>${r.shootType}</div><div class="metric"><b>발수</b><br>${r.points.length}/${r.shotCount}발</div><div class="metric"><b>세트</b><br>${r.setNo}</div><div class="metric"><b>날씨</b><br>${r.weather}</div>`;
@@ -127,7 +149,11 @@ function openReport(id){
   const img=new Image(); img.onload=()=>{ r.imageObj=img; drawCanvas($('reportCanvas'),r); }; img.src=r.imageData;
   window.scrollTo({top:$('reportPaper').offsetTop-20,behavior:'smooth'});
 }
-function resetAnalysis(){ state.points=[]; state.center=null; state.selectedPoint=null; state.image=null; state.imageName=''; $('photoInput').value=''; $('emptyCanvas').style.display='flex'; setMode('add'); renderCounts(); }
+function resetAnalysis(){
+  state.points=[]; state.center=null; state.selectedPoint=null; state.image=null; state.imageName='';
+  if($('cameraInput')) $('cameraInput').value=''; if($('albumInput')) $('albumInput').value='';
+  $('emptyCanvas').style.display='flex'; setMode('add'); renderCounts();
+}
 async function shareReportImage(){
   const canvas=$('reportCanvas'); if(!canvas.width) return toast('먼저 결과지를 여세요.');
   canvas.toBlob(async blob=>{ try{ const file=new File([blob],'biathlon-result.png',{type:'image/png'}); if(navigator.canShare?.({files:[file]})){ await navigator.share({files:[file],title:'Biathlon Field Coach 결과'}); } else { const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='biathlon-result.png'; a.click(); } }catch(e){ toast('공유를 취소했거나 지원되지 않습니다.'); } },'image/png');
@@ -148,12 +174,27 @@ function init(){
     const dr=e.target.dataset.delReport; if(dr && confirm('결과를 삭제할까요?')){ state.store.reports=state.store.reports.filter(r=>r.id!==dr); save(); renderReports(); }
   });
   $('shotCount').addEventListener('change',()=>{ const max=parseInt($('shotCount').value,10); if(state.points.length>max) state.points=state.points.slice(0,max); renderCounts(); });
-  $('photoInput').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f) return; const reader=new FileReader(); reader.onload=()=>{ const img=new Image(); img.onload=()=>{ state.image=img; state.imageName=f.name; $('emptyCanvas').style.display='none'; drawCanvas(); }; img.src=reader.result; }; reader.readAsDataURL(f); });
+  function loadPhotoFile(file){
+    if(!file) return;
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        state.image=img; state.imageName=file.name || '촬영 사진'; state.points=[]; state.center=null;
+        $('emptyCanvas').style.display='none'; setMode('center'); drawCanvas(); renderCounts();
+        toast('사진 불러오기 완료. 먼저 중앙을 지정하세요.');
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+  $('cameraInput')?.addEventListener('change',e=>loadPhotoFile(e.target.files[0]));
+  $('albumInput')?.addEventListener('change',e=>loadPhotoFile(e.target.files[0]));
   $('shotCanvas').addEventListener('mousedown',handleCanvasDown); $('shotCanvas').addEventListener('mousemove',handleCanvasMove); window.addEventListener('mouseup',handleCanvasUp);
   $('shotCanvas').addEventListener('touchstart',handleCanvasDown,{passive:false}); $('shotCanvas').addEventListener('touchmove',handleCanvasMove,{passive:false}); $('shotCanvas').addEventListener('touchend',handleCanvasUp);
   $('addPointModeBtn').addEventListener('click',()=>setMode('add')); $('movePointModeBtn').addEventListener('click',()=>setMode('move')); $('deletePointModeBtn').addEventListener('click',()=>setMode('del')); $('centerModeBtn').addEventListener('click',()=>setMode('center'));
   $('resetAnalysisBtn').addEventListener('click',resetAnalysis); $('saveAnalysisBtn').addEventListener('click',saveAnalysis); $('goReportsBtn').addEventListener('click',()=>go('reports'));
-  $('printReportBtn').addEventListener('click',()=>window.print()); $('shareImageBtn').addEventListener('click',shareReportImage); $('closeReportBtn').addEventListener('click',()=>$('reportPaper').hidden=true); $('exportDataBtn').addEventListener('click',exportData);
+  $('printReportBtn').addEventListener('click',()=>window.print()); $('shareImageBtn').addEventListener('click',shareReportImage); $('closeReportBtn').addEventListener('click',()=>{ $('reportPaper').hidden=true; document.body.classList.remove('report-open'); }); $('exportDataBtn').addEventListener('click',exportData);
   $('saveSettingsBtn').addEventListener('click',()=>{ state.store.settings.aiEndpoint=$('aiEndpoint').value.trim(); save(); toast('설정이 저장되었습니다.'); });
   $('checkOfflineBtn').addEventListener('click',()=>{ $('offlineDetail').textContent = navigator.serviceWorker ? 'Service Worker 지원: 가능. 홈 화면에 추가 후 오프라인 실행을 테스트하세요.' : '이 브라우저는 오프라인 앱 기능을 지원하지 않습니다.'; });
   $('clearDataBtn').addEventListener('click',()=>{ if(confirm('기기 저장 데이터를 모두 삭제할까요?')){ localStorage.removeItem(KEY); location.reload(); }});
