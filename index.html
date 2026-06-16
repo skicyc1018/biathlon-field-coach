@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="BFC v1" />
-  <title>Biathlon Field Coach v1.0.4</title>
+  <title>Biathlon Field Coach v1.0.7</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
   <link rel="stylesheet" href="./style.css" />
@@ -17,7 +17,7 @@
     <header class="topbar">
       <div>
         <div class="eyebrow">BIATHLON FIELD COACH</div>
-        <h1>현장 사격 분석 v1.0.4</h1>
+        <h1>현장 사격 분석 v1.0.7</h1>
       </div>
       <button id="installBtn" class="ghost small" hidden>앱 설치</button>
     </header>
@@ -38,7 +38,7 @@
           <article class="status-card">
             <span class="label">AI 분석</span>
             <strong id="aiStatus">수동 모드</strong>
-            <small>v1.0.4은 오프라인 수동 분석 우선</small>
+            <small>v1.0.7은 오프라인 수동 분석 우선</small>
           </article>
         </div>
 
@@ -52,9 +52,17 @@
         </div>
 
         <div class="notice-card">
-          <h3>v1.0.4 범위</h3>
+          <h3>v1.0.7 범위</h3>
           <ul>
             <li>사진 촬영과 앨범 업로드 버튼 분리</li>
+            <li>분석 화면 확대/화면채움 모드 추가</li>
+            <li>자동 분석 버튼 복구: 색상 기반 자석 후보 자동 탐지</li>
+            <li>사격판 4개 원 기준선 입력: ① 가는 점선, ② 굵은 점선(복사 기준선), ③ 가는 실선, ④ 배경 경계선(입사 기준선)</li>
+            <li>v1.0.7: 입사 판정은 ④ 외곽 기준선 자동 추정 + 수동 설정을 우선 반영</li>
+            <li>v1.0.7: 결과지 상·하단에 분석/홈 복귀 버튼 고정 표시</li>
+            <li>복사: ② 굵은 점선에 걸치면 명중, 입사: ④ 배경 경계선 안쪽이면 명중</li>
+            <li>직접 탄착 마킹, 이동, 삭제, 판정 수정 기능 유지</li>
+            <li>사격 클릭 보정 제안 기능 추가</li>
             <li>업로드 사진을 한 화면에 맞춰 전체 보드판 확인 가능</li>
             <li>폰/패드 홈화면 설치용 PWA 구조</li>
             <li>선수 등록, 제로/복사/입사, 1~5발 세트 저장</li>
@@ -147,16 +155,43 @@
             <div class="step"><b>4</b><span>저장</span></div>
           </div>
 
-          <div class="tool-grid">
+          <div class="tool-grid expanded-tools">
+            <button id="autoDetectBtn" class="primary" type="button">⚡ 자동 분석</button>
+            <button id="focusModeBtn" class="secondary" type="button">🔍 분석 크게</button>
+            <button id="fillModeBtn" class="secondary" type="button">▣ 화면 채움</button>
             <button id="centerModeBtn" class="secondary" type="button">🎯 중앙 지정</button>
-            <button id="addPointModeBtn" class="primary" type="button">＋ 수동 마킹</button>
+            <button id="ring1ModeBtn" class="secondary" type="button">① 가는 점선</button>
+            <button id="proneLineModeBtn" class="secondary" type="button">② 복사 기준선</button>
+            <button id="ring3ModeBtn" class="secondary" type="button">③ 가는 실선</button>
+            <button id="standingLineModeBtn" class="secondary" type="button">④ 입사 기준선</button>
+            <button id="addPointModeBtn" class="primary" type="button">＋ 직접 마킹</button>
             <button id="movePointModeBtn" class="secondary" type="button">↔ 점 이동</button>
             <button id="deletePointModeBtn" class="secondary" type="button">× 점 삭제</button>
+            <button id="toggleHitModeBtn" class="secondary" type="button">○ 판정 수정</button>
+          </div>
+
+          <div class="calibration-panel four-ring-panel">
+            <label>① 가는 점선 반경(px)
+              <input id="ring1Radius" type="number" min="5" value="45" />
+            </label>
+            <label>② 복사 기준선 반경(px)
+              <input id="proneRadius" type="number" min="5" value="80" />
+            </label>
+            <label>③ 가는 실선 반경(px)
+              <input id="ring3Radius" type="number" min="5" value="120" />
+            </label>
+            <label>④ 입사 기준선 반경(px)
+              <input id="standingRadius" type="number" min="5" value="170" />
+            </label>
+            <label>1클릭 기준(px)
+              <input id="clickPx" type="number" min="1" value="12" />
+            </label>
+            <button id="applyCalibrationBtn" class="secondary" type="button">판정 반영</button>
           </div>
 
           <div class="hint-card">
             <strong id="modeText">현재 모드: 점 추가</strong>
-            <p><b>수동 마킹</b>을 누른 뒤 사진 위의 자석 중심을 손가락으로 찍으세요. 자석을 덮지 않도록 중심 십자와 얇은 원만 표시합니다.</p>
+            <p><b>직접 마킹</b>은 사진 위 자석 중심을 손가락으로 찍는 기능입니다. <b>② 복사 기준선</b>은 굵은 점선, <b>④ 입사 기준선</b>은 검은 원과 흰 배경이 만나는 외곽선입니다. 선에 걸치면 명중으로 판정합니다.</p>
             <p>입력 탄착점 <strong id="pointCount">0</strong> / <strong id="requiredCount">5</strong></p>
           </div>
 
@@ -211,12 +246,22 @@
             <div class="report-actions no-print">
               <button id="printReportBtn" class="primary">PDF 저장 / 인쇄</button>
               <button id="shareImageBtn" class="secondary">결과 이미지 공유</button>
+              <button id="reportToAnalysisBtn" class="secondary">분석으로</button>
+              <button id="reportToHomeBtn" class="secondary">홈으로</button>
               <button id="closeReportBtn" class="ghost">닫기</button>
             </div>
           </div>
           <div id="reportMeta" class="report-meta"></div>
+          <div class="report-nav-inline no-print">
+            <button id="reportToAnalysisBtnTop" class="primary">분석 화면으로 돌아가기</button>
+            <button id="reportToHomeBtnTop" class="secondary">홈으로 돌아가기</button>
+          </div>
           <canvas id="reportCanvas"></canvas>
           <div id="reportMetrics" class="report-metrics"></div>
+          <div class="report-nav-inline no-print bottom-return">
+            <button id="reportToAnalysisBtnBottom" class="primary">분석 화면으로 돌아가기</button>
+            <button id="reportToHomeBtnBottom" class="secondary">홈으로 돌아가기</button>
+          </div>
           <label class="coach-comment no-print">지도자 코멘트
             <textarea id="coachComment" placeholder="선수에게 전달할 코멘트를 작성하세요."></textarea>
           </label>
@@ -238,7 +283,7 @@
         </div>
         <div class="field-card">
           <h3>AI 분석 확장 영역</h3>
-          <p>v1.0.4은 오프라인 수동 분석을 먼저 안정화한 버전입니다. 다음 버전에서 온라인 AI 중계 서버를 연결합니다.</p>
+          <p>v1.0.7은 오프라인 수동 분석을 먼저 안정화한 버전입니다. 다음 버전에서 온라인 AI 중계 서버를 연결합니다.</p>
           <label>AI 서버 주소 메모
             <input id="aiEndpoint" placeholder="예: https://bfc-ai.example.com/detect" />
           </label>

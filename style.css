@@ -64,3 +64,48 @@ body.report-open .report-paper{padding-bottom:48px}
   .canvas-wrap{height:calc(100vh - 210px);min-height:260px}
   .report-paper canvas{max-height:calc(100vh - 240px)}
 }
+
+/* v1.0.5: 현장 분석 핵심 복구 - 화면채움, 직접 마킹, 자동분석, 명중원, 클릭 보정 */
+.expanded-tools{grid-template-columns:repeat(3,1fr)}
+.calibration-panel{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0;background:#071426;border:1px solid var(--line);border-radius:20px;padding:16px}
+.calibration-panel input{font-weight:900;color:#fff;background:#08182a}
+.canvas-wrap.fill-mode{height:auto;min-height:72vh;align-items:flex-start;padding:6px}
+.canvas-wrap.fill-mode canvas{width:100%;max-width:100%;max-height:none;border-radius:18px}
+body.analysis-focus{padding:6px 6px 18px;background:#020812}
+body.analysis-focus .topbar,
+body.analysis-focus #analysis .section-title:first-child,
+body.analysis-focus #analysis #analysisForm,
+body.analysis-focus #analysis .guide-steps,
+body.analysis-focus .bottom-nav{display:none!important}
+body.analysis-focus .app-shell{max-width:none;width:100%}
+body.analysis-focus .field-card{margin:0;border-radius:0;border:0;background:#020812;box-shadow:none;padding:8px}
+body.analysis-focus .section-title.compact{position:sticky;top:0;z-index:20;background:rgba(2,8,18,.94);backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:18px;padding:12px;margin-bottom:10px}
+body.analysis-focus .canvas-wrap{height:calc(100vh - 250px);min-height:420px;border-radius:18px;border-color:rgba(25,231,242,.35)}
+body.analysis-focus .canvas-wrap.fill-mode{height:auto;min-height:calc(100vh - 250px)}
+body.analysis-focus .tool-grid{position:sticky;bottom:8px;z-index:20;background:rgba(2,8,18,.92);border:1px solid var(--line);border-radius:20px;padding:10px;backdrop-filter:blur(12px)}
+body.analysis-focus .calibration-panel{position:sticky;bottom:94px;z-index:18;background:rgba(7,20,38,.92);backdrop-filter:blur(12px)}
+body.analysis-focus .hint-card, body.analysis-focus .action-row{display:none}
+.report-actions .secondary{background:#172941}
+.metric b{font-weight:900}.report-paper canvas{background:#fff}
+@media(max-width:900px){.expanded-tools{grid-template-columns:repeat(2,1fr)}.calibration-panel{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:760px){.expanded-tools{grid-template-columns:1fr}.calibration-panel{grid-template-columns:1fr}body.analysis-focus .canvas-wrap{height:calc(100vh - 300px);min-height:320px}.tool-grid button{min-height:54px}}
+@media(orientation:landscape) and (max-height:680px){body.analysis-focus .canvas-wrap{height:calc(100vh - 210px);min-height:300px}body.analysis-focus .calibration-panel{display:none}.expanded-tools{grid-template-columns:repeat(5,1fr)}}
+@media print{.report-actions,#reportList{display:none!important}.report-paper canvas{max-height:62vh!important}}
+
+/* v1.0.6: 사격판 4개 원 기준선 판정 */
+.four-ring-panel{grid-template-columns:repeat(6,1fr)}
+.four-ring-panel label{font-size:.92rem}
+.expanded-tools{grid-template-columns:repeat(4,1fr)}
+@media(max-width:1100px){.expanded-tools{grid-template-columns:repeat(3,1fr)}.four-ring-panel{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:760px){.expanded-tools,.four-ring-panel{grid-template-columns:1fr}}
+
+
+/* v1.0.7: 결과 화면 복귀 버튼을 명확히 표시 */
+.report-nav-inline{display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-end;align-items:center;margin:14px 0 18px;padding:12px;border-radius:18px;background:#edf4f8;border:1px solid #d6e3ee}
+.report-nav-inline button{min-width:190px;color:#04101a}
+.report-nav-inline .secondary{background:#172941;color:#fff}
+.report-head{position:sticky;top:0;z-index:25;background:#fff;padding:10px 0 14px;border-bottom:1px solid #dde4ee}
+.report-actions .ghost{background:#f3f6f9;color:#111;border:1px solid #cbd6e2}
+.report-actions .secondary{color:#fff}
+.report-actions .primary{color:#021018}
+@media(max-width:760px){.report-nav-inline{justify-content:stretch}.report-nav-inline button{width:100%;min-width:0}.report-head{position:static}.report-actions button{width:100%}}

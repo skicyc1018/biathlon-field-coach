@@ -1,6 +1,6 @@
 {
-  "name": "Biathlon Field Coach v1.0.4",
-  "short_name": "BFC v1.0.4",
+  "name": "Biathlon Field Coach v1.0.7",
+  "short_name": "BFC v1.0.7",
   "description": "야외 바이애슬론 사격장용 선수별 사격 분석 PWA",
   "start_url": "./",
   "scope": "./",
