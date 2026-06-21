@@ -1,12 +1,12 @@
-const CACHE_NAME = 'bfc-v1-0-9-cache';
+const CACHE_NAME = 'bfc-v1-0-11-cache';
 const ASSETS = [
-  './',
-  './index.html',
-  './style.css',
-  './app.js',
-  './manifest.webmanifest',
-  './icons/icon-192.png',
-  './icons/icon-512.png'
+  './?v=111',
+  './index.html?v=111',
+  './style.css?v=111',
+  './app.js?v=111',
+  './manifest.webmanifest?v=111',
+  './icons/icon-192.png?v=111',
+  './icons/icon-512.png?v=111'
 ];
 
 self.addEventListener('install', event => {
@@ -34,6 +34,6 @@ self.addEventListener('fetch', event => {
         caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
         return resp;
       })
-      .catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html')))
+      .catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html?v=111')))
   );
 });
