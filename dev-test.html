@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BFC v1.2 · 자동 보조 개발자 테스트</title>
+<style>
+  body{margin:0;background:#06111d;color:#eef4ff;font-family:-apple-system,BlinkMacSystemFont,'Noto Sans KR',sans-serif}
+  header{padding:18px 22px;border-bottom:1px solid #2c3b50}
+  h1{font-size:1.2rem;margin:0 0 6px}
+  .note{color:#9fb0c8;font-size:.85rem;line-height:1.5}
+  .bar{padding:14px 22px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .upload{background:#18dce8;color:#00151a;border:0;border-radius:14px;padding:12px 18px;font-weight:800;cursor:pointer}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;padding:18px 22px}
+  .cell{background:#0b1725;border:1px solid #2c3b50;border-radius:16px;padding:12px}
+  .cell canvas{width:100%;height:auto;border-radius:10px;background:#020a12;display:block}
+  .meta{font-size:.82rem;color:#cfe0f2;margin-top:8px;line-height:1.5;word-break:break-all}
+  .tag{display:inline-block;background:rgba(255,196,60,.18);color:#ffd34d;border-radius:8px;padding:2px 8px;font-size:.75rem;margin-right:6px}
+  .ok{color:#1ee09c}
+</style>
+</head>
+<body>
+<header>
+  <h1>Biathlon Field Coach v1.2 · 무료 자동 보조 개발자 테스트</h1>
+  <p class="note">
+    여러 보드판 사진을 한 번에 선택하면 각 사진에 자동 보조 가이드(입사 외곽선=얇은 청록, 복사선=밝은 청록, 중심 십자)를 오버레이로 보여줍니다.<br>
+    이 페이지는 개발/검증 전용입니다. 본 앱 UI에는 노출되지 않으며 외부 API를 호출하지 않습니다. 저장 기능은 없습니다.<br>
+    ⚠️ 아래 검출 로직은 <b>app.js의 fallbackDetectBoard 알고리즘을 그대로 복사한 개발용 미러</b>입니다. app.js 알고리즘을 수정하면 이 파일도 함께 갱신하세요.
+  </p>
+</header>
+<div class="bar">
+  <label class="upload">사진 여러 장 선택<input id="files" type="file" accept="image/*" multiple hidden /></label>
+  <span class="note">선택한 사진은 메모리에서만 처리되며 저장/이동/삭제하지 않습니다.</span>
+</div>
+<div id="grid" class="grid"></div>
+
+<script>
+// ===== app.js fallbackDetectBoard 알고리즘 미러(개발용) =====
+function otsuThreshold(lum,N){const hist=new Float64Array(256);for(let i=0;i<N;i++){let v=lum[i]|0;if(v<0)v=0;else if(v>255)v=255;hist[v]++;}let sumAll=0;for(let t=0;t<256;t++)sumAll+=t*hist[t];let wB=0,sumB=0,maxVar=-1,thr=127;for(let t=0;t<256;t++){wB+=hist[t];if(wB===0)continue;const wF=N-wB;if(wF===0)break;sumB+=t*hist[t];const mB=sumB/wB,mF=(sumAll-sumB)/wF;const v=wB*wF*(mB-mF)*(mB-mF);if(v>maxVar){maxVar=v;thr=t;}}return thr;}
+function darkComponents(dark,w,h,N,minCount){const visited=new Uint8Array(N),stack=new Int32Array(N);const comps=[];for(let start=0;start<N;start++){if(!dark[start]||visited[start])continue;let sp=0;stack[sp++]=start;visited[start]=1;let count=0,sx=0,sy=0,minx=w,maxx=0,miny=h,maxy=0;while(sp>0){const idx=stack[--sp];const x=idx%w,y=(idx/w)|0;count++;sx+=x;sy+=y;if(x<minx)minx=x;if(x>maxx)maxx=x;if(y<miny)miny=y;if(y>maxy)maxy=y;if(x>0){const n=idx-1;if(dark[n]&&!visited[n]){visited[n]=1;stack[sp++]=n;}}if(x<w-1){const n=idx+1;if(dark[n]&&!visited[n]){visited[n]=1;stack[sp++]=n;}}if(y>0){const n=idx-w;if(dark[n]&&!visited[n]){visited[n]=1;stack[sp++]=n;}}if(y<h-1){const n=idx+w;if(dark[n]&&!visited[n]){visited[n]=1;stack[sp++]=n;}}}if(count>=minCount)comps.push({count,cx:sx/count,cy:sy/count,minx,maxx,miny,maxy});}return comps;}
+function bboxGap(a,b){const sx=Math.max(0,Math.max(a.minx,b.minx)-Math.min(a.maxx,b.maxx));const sy=Math.max(0,Math.max(a.miny,b.miny)-Math.min(a.maxy,b.maxy));return Math.hypot(sx,sy);}
+function mergeTargetBox(comps,w,h){if(!comps.length)return null;const icx=w/2,icy=h/2,short=Math.min(w,h),diag=Math.hypot(w,h);let anchor=null,aScore=-1;comps.forEach(c=>{const dc=Math.hypot(c.cx-icx,c.cy-icy);if(dc>0.45*short)return;const central=1-Math.min(1,dc/(diag/2));const sc=c.count*(0.5+0.5*central);if(sc>aScore){aScore=sc;anchor=c;}});if(!anchor)anchor=comps.reduce((p,c)=>c.count>p.count?c:p,comps[0]);const merge=(gapTol,centralLimit)=>{const box={minx:anchor.minx,maxx:anchor.maxx,miny:anchor.miny,maxy:anchor.maxy};const used=new Set([anchor]);let changed=true,n=1;while(changed){changed=false;for(const c of comps){if(used.has(c))continue;const cx=(box.minx+box.maxx)/2,cy=(box.miny+box.maxy)/2;const central=Math.hypot(c.cx-cx,c.cy-cy)<centralLimit*short;const big=c.count/(w*h)>0.02;if(bboxGap(box,c)<=gapTol*short&&(central||big)){box.minx=Math.min(box.minx,c.minx);box.maxx=Math.max(box.maxx,c.maxx);box.miny=Math.min(box.miny,c.miny);box.maxy=Math.max(box.maxy,c.maxy);used.add(c);changed=true;n++;}}}return {box,n};};let {box,n}=merge(0.05,0.42);let bw=box.maxx-box.minx+1,bh=box.maxy-box.miny+1;if(Math.min(bw,bh)<0.25*short){const r2=merge(0.14,0.40);box=r2.box;n=r2.n;bw=box.maxx-box.minx+1;bh=box.maxy-box.miny+1;}return {minx:box.minx,maxx:box.maxx,miny:box.miny,maxy:box.maxy,bw,bh,n};}
+function rayEllipse(L,cx0,cy0,w,h,thr){const rays=240,capR=Math.min(w,h)*0.62,K=3;const pts=[];for(let k=0;k<rays;k++){const a=k/rays*Math.PI*2,dx=Math.cos(a),dy=Math.sin(a);let edge=-1,run=0;for(let r=capR;r>=4;r--){const x=cx0+dx*r,y=cy0+dy*r;if(x<0||y<0||x>=w||y>=h){run=0;continue;}if(L(x,y)<thr){run++;if(run>=K){edge=r+(K-1);break;}}else run=0;}if(edge>0)pts.push({x:cx0+dx*edge,y:cy0+dy*edge,r:edge});}if(pts.length<rays*0.4)return null;const rs=pts.map(p=>p.r).sort((a,b)=>a-b);const med=rs[rs.length>>1]||1;const good=pts.filter(p=>p.r>med*0.6&&p.r<med*1.5);if(good.length<rays*0.35)return null;let mx=0,my=0;good.forEach(p=>{mx+=p.x;my+=p.y});const cx=mx/good.length,cy=my/good.length;let sxx=0,syy=0,sxy=0;good.forEach(p=>{const ux=p.x-cx,uy=p.y-cy;sxx+=ux*ux;syy+=uy*uy;sxy+=ux*uy;});sxx/=good.length;syy/=good.length;sxy/=good.length;const rotation=0.5*Math.atan2(2*sxy,sxx-syy);const ca=Math.cos(rotation),sa=Math.sin(rotation);const uA=[],uB=[];good.forEach(p=>{const ux=p.x-cx,uy=p.y-cy;uA.push(Math.abs(ux*ca+uy*sa));uB.push(Math.abs(-ux*sa+uy*ca));});uA.sort((a,b)=>a-b);uB.sort((a,b)=>a-b);const pct=arr=>arr[Math.min(arr.length-1,Math.floor(arr.length*0.93))]||1;const rx=pct(uA),ry=pct(uB);const found=good.length/rays;let resid=0;good.forEach(p=>{const ux=p.x-cx,uy=p.y-cy;const u=ux*ca+uy*sa,v=-ux*sa+uy*ca;resid+=Math.abs(Math.hypot(u/rx,v/ry)-1);});resid/=good.length;const confidence=Math.max(0,Math.min(1,found*(1-Math.min(1,resid))));return {cx,cy,rx,ry,rotation,found,confidence};}
+function radialProfile(L,w,h,cx,cy,rx,ry,rot,K,A){const ca=Math.cos(rot),sa=Math.sin(rot);const prof=new Float32Array(K);for(let i=0;i<K;i++){const rn=i/(K-1)*1.2;let s=0,n=0;for(let a=0;a<A;a++){const ang=a/A*Math.PI*2,ex=Math.cos(ang)*rx*rn,ey=Math.sin(ang)*ry*rn;const x=cx+ex*ca-ey*sa,y=cy+ex*sa+ey*ca;if(x<0||y<0||x>=w||y>=h)continue;s+=L(x,y);n++;}prof[i]=n?s/n:NaN;}return prof;}
+function profileScore(prof,K){const at=rn=>{const i=Math.max(0,Math.min(K-1,Math.round(rn/1.2*(K-1))));return prof[i];};const rmean=(a,b)=>{let s=0,n=0;for(let rn=a;rn<=b+1e-9;rn+=0.025){const v=at(rn);if(!isNaN(v)){s+=v;n++;}}return n?s/n:0;};const rmax=(a,b)=>{let m=-1e9;for(let rn=a;rn<=b+1e-9;rn+=0.025){const v=at(rn);if(!isNaN(v)&&v>m)m=v;}return m;};const bg=rmean(1.05,1.2),inEdge=rmean(0.85,0.98),interior=rmean(0.1,0.9);const edge=bg-inEdge;const interiorDark=bg-interior;const prone=rmax(0.44,0.58)-(rmean(0.35,0.42)+rmean(0.60,0.68))/2;const innerDot=rmax(0.27,0.34)-(rmean(0.18,0.26)+rmean(0.36,0.42))/2;const outerDot=rmax(0.70,0.80)-(rmean(0.60,0.68)+rmean(0.84,0.92))/2;const cp=v=>Math.max(0,v);const total=1.2*cp(edge)+1.0*cp(interiorDark)+1.1*cp(prone)+0.4*cp(innerDot)+0.4*cp(outerDot);return {total,edge,interiorDark,prone,innerDot,outerDot,bg,interior};}
+function crossScore(L,w,h,cx,cy,rx,ry,rot){const ca=Math.cos(rot),sa=Math.sin(rot);let ax=0,an=0,dg=0,dn=0;const sample=(ang,rn)=>{const ex=Math.cos(ang)*rx*rn,ey=Math.sin(ang)*ry*rn;const x=cx+ex*ca-ey*sa,y=cy+ex*sa+ey*ca;if(x<0||y<0||x>=w||y>=h)return null;return L(x,y);};for(let rn=0.04;rn<=0.26;rn+=0.02){[0,Math.PI/2,Math.PI,3*Math.PI/2].forEach(a=>{const v=sample(a,rn);if(v!=null){ax+=v;an++;}});[Math.PI/4,3*Math.PI/4,5*Math.PI/4,7*Math.PI/4].forEach(a=>{const v=sample(a,rn);if(v!=null){dg+=v;dn++;}});}return (an&&dn)?(ax/an-dg/dn):0;}
+function boundaryContrast(L,w,h,cx,cy,rx,ry,rot){const ca=Math.cos(rot),sa=Math.sin(rot),A=96;let inn=0,inN=0,out=0,outN=0;for(let a=0;a<A;a++){const ang=a/A*Math.PI*2,c=Math.cos(ang),s=Math.sin(ang);for(let rn=0.88;rn<=0.971;rn+=0.03){const ex=c*rx*rn,ey=s*ry*rn,x=cx+ex*ca-ey*sa,y=cy+ex*sa+ey*ca;if(x>=0&&y>=0&&x<w&&y<h){inn+=L(x,y);inN++;}}for(let rn=1.04;rn<=1.141;rn+=0.03){const ex=c*rx*rn,ey=s*ry*rn,x=cx+ex*ca-ey*sa,y=cy+ex*sa+ey*ca;if(x>=0&&y>=0&&x<w&&y<h){out+=L(x,y);outN++;}}}const inner=inN?inn/inN:0,outer=outN?out/outN:0;return {inner,outer,contrast:outer-inner};}
+function findCenterCross(L,w,h,cx,cy,rx,ry,rot){const ca=Math.cos(rot),sa=Math.sin(rot);const at=(un,vn)=>{const ex=un*rx,ey=vn*ry,x=cx+ex*ca-ey*sa,y=cy+ex*sa+ey*ca;if(x<0||y<0||x>=w||y>=h)return NaN;return L(x,y);};let bestU=0,bU=-1e9,baseU=0,bnU=0;for(let u=-0.3;u<=0.3001;u+=0.02){let s=0,n=0;for(let v=-0.6;v<=0.6001;v+=0.05){const g=at(u,v);if(!isNaN(g)){s+=g;n++;}}const m=n?s/n:-1e9;baseU+=m;bnU++;if(m>bU){bU=m;bestU=u;}}baseU/=bnU;let bestV=0,bV=-1e9,baseV=0,bnV=0;for(let v=-0.3;v<=0.3001;v+=0.02){let s=0,n=0;for(let u=-0.6;u<=0.6001;u+=0.05){const g=at(u,v);if(!isNaN(g)){s+=g;n++;}}const m=n?s/n:-1e9;baseV+=m;bnV++;if(m>bV){bV=m;bestV=v;}}baseV/=bnV;return {offU:bestU*rx,offV:bestV*ry,prom:Math.min(bU-baseU,bV-baseV)};}
+
+function detectBoard(img){
+  try{
+    const maxDim=420;const scale=Math.min(1,maxDim/Math.max(img.width,img.height));
+    const w=Math.max(1,Math.round(img.width*scale)),h=Math.max(1,Math.round(img.height*scale));
+    const oc=document.createElement('canvas');oc.width=w;oc.height=h;
+    const octx=oc.getContext('2d',{willReadFrequently:true});octx.drawImage(img,0,0,w,h);
+    const px=octx.getImageData(0,0,w,h).data;const N=w*h;
+    const lum=new Float32Array(N);let sum=0;
+    for(let i=0;i<N;i++){const Lp=0.299*px[i*4]+0.587*px[i*4+1]+0.114*px[i*4+2];lum[i]=Lp;sum+=Lp;}
+    const mean=sum/N,short=Math.min(w,h);const L=(x,y)=>lum[(y|0)*w+(x|0)];
+    const otsu=otsuThreshold(lum,N);const thr=Math.min(135,Math.max(45,Math.min(otsu,mean*0.85)));
+    const dark=new Uint8Array(N);for(let i=0;i<N;i++)dark[i]=lum[i]<thr?1:0;
+    const seeds=[{cx:w/2,cy:h/2}];let dsx=0,dsy=0,dn=0;for(let i=0;i<N;i++)if(dark[i]){dsx+=i%w;dsy+=(i/w)|0;dn++;}
+    if(dn)seeds.push({cx:dsx/dn,cy:dsy/dn});
+    const comps=darkComponents(dark,w,h,N,Math.round(N*0.0008));
+    const merged=comps.length?mergeTargetBox(comps,w,h):null;
+    if(merged)seeds.push({cx:(merged.minx+merged.maxx)/2,cy:(merged.miny+merged.maxy)/2});
+    const K=41,A=64,Rmin=0.16*short,Rmax=0.48*short,Rstep=Math.max(2,0.02*short);
+    let bestC=null;
+    for(const sd of seeds){for(let oy=-3;oy<=3;oy++)for(let ox=-3;ox<=3;ox++){const cx=sd.cx+ox*0.04*short,cy=sd.cy+oy*0.04*short;if(cx<0||cy<0||cx>=w||cy>=h)continue;for(let R=Rmin;R<=Rmax;R+=Rstep){const prof=radialProfile(L,w,h,cx,cy,R,R,0,K,A);const sc=profileScore(prof,K);const cross=crossScore(L,w,h,cx,cy,R,R,0);const central=1-Math.min(1,Math.hypot(cx-w/2,cy-h/2)/(short*0.6));const total=sc.total+0.5*Math.max(0,cross)+8*central;if(!bestC||total>bestC.total)bestC={total,cx,cy,R,sc,cross};}}}
+    if(!bestC)return null;
+    if(bestC.sc.edge<6&&bestC.sc.interiorDark<6)return null;
+    let rc={cx:bestC.cx,cy:bestC.cy,R:bestC.R,con:-1e9};
+    for(let oy=-2;oy<=2;oy++)for(let ox=-2;ox<=2;ox++){const ccx=bestC.cx+ox*0.02*short,ccy=bestC.cy+oy*0.02*short;if(ccx<0||ccy<0||ccx>=w||ccy>=h)continue;for(let R=bestC.R*0.8;R<=bestC.R*1.221;R+=Math.max(1,0.008*short)){const con=boundaryContrast(L,w,h,ccx,ccy,R,R,0).contrast;if(con>rc.con)rc={cx:ccx,cy:ccy,R,con};}}
+    let cx=rc.cx,cy=rc.cy,rx=rc.R,ry=rc.R,rotation=0,method='concentric-boundary';
+    const ray=rayEllipse(L,cx,cy,w,h,thr);
+    if(ray){const rxOk=ray.rx>rc.R*0.82&&ray.rx<rc.R*1.2;const ryOk=ray.ry>rc.R*0.82&&ray.ry<rc.R*1.2;const centerOk=Math.hypot(ray.cx-cx,ray.cy-cy)<rc.R*0.12;if(ray.found>=0.5&&ray.confidence>=0.4&&centerOk&&rxOk&&ryOk){method='concentric-boundary+ellipse';rx=0.5*rc.R+0.5*ray.rx;ry=0.5*rc.R+0.5*ray.ry;rotation=ray.rotation;}}
+    const rStandingPx=Math.max(rx,ry);const cc=findCenterCross(L,w,h,cx,cy,rx,ry,rotation);
+    if(cc.prom>=20&&Math.hypot(cc.offU,cc.offV)<=0.05*rStandingPx){const crot=Math.cos(rotation),srot=Math.sin(rotation);cx=cx+cc.offU*crot-cc.offV*srot;cy=cy+cc.offU*srot+cc.offV*crot;}
+    const fineProf=radialProfile(L,w,h,cx,cy,rx,ry,rotation,K,96);let rProneNorm=0.50,bestB=-1,peakS=0.50;
+    for(let s=0.44;s<=0.581;s+=0.01){const i=Math.round(s/1.2*(K-1)),v=fineProf[i];if(!isNaN(v)&&v>bestB){bestB=v;peakS=Number(s.toFixed(2));}}
+    const proneBase=(fineProf[Math.round(0.38/1.2*(K-1))]+fineProf[Math.round(0.64/1.2*(K-1))])/2;
+    if(bestB-proneBase>=12&&peakS>=0.44&&peakS<=0.58)rProneNorm=peakS;
+    const conf=Math.max(0,Math.min(1,0.6*(bestC.total/120)+0.4*Math.min(1,Math.max(0,rc.con)/80)));
+    const inv=1/scale;
+    return {cx:cx*inv,cy:cy*inv,rx:rx*inv,ry:ry*inv,rotation,rStandingNorm:1.0,rProneNorm,method:'auto-assist',confidence:Number(conf.toFixed(2))};
+  }catch(e){console.warn(e);return null;}
+}
+
+function render(img,name){
+  const cell=document.createElement('div');cell.className='cell';
+  const cv=document.createElement('canvas');const meta=document.createElement('div');meta.className='meta';
+  cell.appendChild(cv);cell.appendChild(meta);document.getElementById('grid').appendChild(cell);
+  const maxW=640;const sc=Math.min(1,maxW/img.width);cv.width=Math.round(img.width*sc);cv.height=Math.round(img.height*sc);
+  const ctx=cv.getContext('2d');ctx.drawImage(img,0,0,cv.width,cv.height);
+  const b=detectBoard(img);
+  if(!b){meta.innerHTML='<span class="tag">실패</span> 보드판 후보를 찾지 못함 · '+name;return;}
+  const cx=b.cx*sc,cy=b.cy*sc,rx=b.rx*sc,ry=b.ry*sc,rot=b.rotation;
+  ctx.lineWidth=2.5;ctx.strokeStyle='rgba(25,229,239,.95)';ctx.beginPath();ctx.ellipse(cx,cy,rx*b.rProneNorm,ry*b.rProneNorm,rot,0,Math.PI*2);ctx.stroke();
+  ctx.lineWidth=2;ctx.strokeStyle='rgba(24,220,232,.95)';ctx.beginPath();ctx.ellipse(cx,cy,rx,ry,rot,0,Math.PI*2);ctx.stroke();
+  ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(cx-12,cy);ctx.lineTo(cx+12,cy);ctx.moveTo(cx,cy-12);ctx.lineTo(cx,cy+12);ctx.stroke();
+  meta.innerHTML='<span class="tag">확인 필요</span>'+name+'<br>method: <b>'+b.method+'</b> · confidence: <b class="ok">'+b.confidence+'</b><br>'+
+    'center: ('+Math.round(b.cx)+', '+Math.round(b.cy)+') · rx/ry: '+Math.round(b.rx)+'/'+Math.round(b.ry)+
+    ' · rot: '+(b.rotation*180/Math.PI).toFixed(1)+'° · 복사선(norm): <b>'+b.rProneNorm.toFixed(2)+'</b> · 입사선(norm): 1.00';
+}
+
+document.getElementById('files').addEventListener('change',e=>{
+  document.getElementById('grid').innerHTML='';
+  [...e.target.files].forEach(f=>{const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>render(im,f.name);im.src=r.result;};r.readAsDataURL(f);});
+});
+</script>
+</body>
+</html>
